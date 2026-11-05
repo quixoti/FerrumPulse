@@ -18,4 +18,5 @@ Thumbs.db
 # Logs & temp targets
 *.log
 ferrumpulse-target/
+dist_release/
 

@@ -95,6 +95,7 @@ pub fn get_battery_telemetry() -> BatteryTelemetry {
     #[cfg(windows)]
     {
         let mut sps = SYSTEM_POWER_STATUS::default();
+        // SAFETY: GetSystemPowerStatus safely writes AC/battery state into a pre-initialized stack structure.
         let ok = unsafe { GetSystemPowerStatus(&mut sps) };
 
         if ok.is_err() {
@@ -164,6 +165,7 @@ pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
         };
 
         // 1. Activate Power Scheme
+        // SAFETY: Switching active power plan using standard Windows Power Scheme GUIDs.
         unsafe {
             let res = PowerSetActiveScheme(None, Some(&target_scheme));
             if res != windows::Win32::Foundation::WIN32_ERROR(0) {
@@ -174,6 +176,7 @@ pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
 
         // 2. DC Min Cores Index (10% on battery allowing unused cores to deep-sleep, 50% default on restore)
         let min_cores: u32 = if enable { 10 } else { 50 };
+        // SAFETY: Writing DC processor subgroup core parking index to valid target scheme.
         unsafe {
             let _ = PowerWriteDCValueIndex(
                 None,
@@ -186,6 +189,7 @@ pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
 
         // 3. Max Processor State (99% prevents aggressive Intel/AMD Turbo boost voltage spikes on DC)
         let max_cpu: u32 = if enable { 99 } else { 100 };
+        // SAFETY: Writing DC maximum processor throttle state index to valid target scheme.
         unsafe {
             let _ = PowerWriteDCValueIndex(
                 None,
@@ -220,6 +224,7 @@ pub fn get_current_display_refresh_rate() -> Option<u32> {
             ..Default::default()
         };
 
+        // SAFETY: EnumDisplaySettingsW queries display frequency into a DEVMODEW structure with pre-sized dmSize.
         let ok = unsafe {
             EnumDisplaySettingsW(None, ENUM_CURRENT_SETTINGS, &mut devmode)
         };
@@ -243,6 +248,7 @@ pub fn set_display_refresh_rate(target_hz: u32) -> Result<(), String> {
             ..Default::default()
         };
 
+        // SAFETY: Querying current display configuration into sized DEVMODEW.
         let ok = unsafe {
             EnumDisplaySettingsW(None, ENUM_CURRENT_SETTINGS, &mut devmode)
         };
@@ -258,6 +264,7 @@ pub fn set_display_refresh_rate(target_hz: u32) -> Result<(), String> {
         devmode.dmDisplayFrequency = target_hz;
         devmode.dmFields = windows::Win32::Graphics::Gdi::DEVMODE_FIELD_FLAGS(0x00400000); // DM_DISPLAYFREQUENCY
 
+        // SAFETY: Updating primary display frequency with CDS_UPDATEREGISTRY flag.
         let res = unsafe {
             ChangeDisplaySettingsExW(None, Some(&devmode), None, CDS_UPDATEREGISTRY, None)
         };

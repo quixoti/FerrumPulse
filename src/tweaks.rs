@@ -458,6 +458,7 @@ fn write_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: u
 #[cfg(windows)]
 fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<String> {
     let mut hkey = HKEY::default();
+    // SAFETY: Opening registry subkey with read-only permissions
     let res = unsafe { RegOpenKeyExW(root, subkey, 0, KEY_READ, &mut hkey) };
     if res.is_err() {
         return None;
@@ -467,6 +468,7 @@ fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<St
     let mut data_size = (buf.len() * 2) as u32;
     let mut val_type = REG_SZ;
 
+    // SAFETY: Reading UTF-16 registry string into stack-allocated fixed buffer
     let query_res = unsafe {
         RegQueryValueExW(
             hkey,
@@ -478,6 +480,7 @@ fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<St
         )
     };
 
+    // SAFETY: Closing open registry key handle
     unsafe {
         let _ = RegCloseKey(hkey);
     };
@@ -494,6 +497,7 @@ fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<St
 #[cfg(windows)]
 fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str) -> Result<(), String> {
     let mut hkey = HKEY::default();
+    // SAFETY: Opening or creating registry subkey with set-value permissions
     let res = unsafe {
         RegCreateKeyExW(
             root,
@@ -512,6 +516,7 @@ fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str
     }
 
     let wide: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: Writing null-terminated UTF-16 byte slice to the open registry key
     let set_res = unsafe {
         RegSetValueExW(
             hkey,
@@ -525,6 +530,7 @@ fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str
         )
     };
 
+    // SAFETY: Closing open registry key handle
     unsafe {
         let _ = RegCloseKey(hkey);
     };
@@ -539,12 +545,15 @@ fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str
 #[cfg(windows)]
 fn delete_registry_value(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Result<(), String> {
     let mut hkey = HKEY::default();
+    // SAFETY: Opening registry subkey with set-value permissions
     let res = unsafe { RegOpenKeyExW(root, subkey, 0, KEY_SET_VALUE, &mut hkey) };
     if res.is_err() {
         return Err(format!("RegOpenKeyExW failed: {:?}", res));
     }
 
+    // SAFETY: Deleting named value under open key handle
     let del_res = unsafe { RegDeleteValueW(hkey, value_name) };
+    // SAFETY: Closing open registry key handle
     unsafe {
         let _ = RegCloseKey(hkey);
     };
@@ -636,6 +645,8 @@ pub fn toggle_raw_mouse_input(enable: bool) -> TweakActionResult {
         let _ = write_registry_sz(HKEY_CURRENT_USER, w!("Control Panel\\Mouse"), w!("MouseThreshold2"), t2);
 
         // Apply immediately to system live session
+        // SAFETY: SystemParametersInfoW with SPI_SETMOUSE safely reads an array of 3 integers
+        // from a valid stack allocation int_params ([Threshold1, Threshold2, MouseSpeed]).
         unsafe {
             let _ = SystemParametersInfoW(
                 SPI_SETMOUSE,

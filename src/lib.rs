@@ -34,6 +34,8 @@ pub fn run() {
                     if let Ok(hwnd) = window.hwnd() {
                         use windows::Win32::Foundation::HWND;
                         use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND};
+                        // SAFETY: Setting DWM window corner preference on a valid HWND returned by Tauri.
+                        // Passing a valid stack-allocated DWMWCP_ROUND enum and its exact byte size.
                         unsafe {
                             let target_hwnd = HWND(hwnd.0 as _);
                             let corner_pref = DWMWCP_ROUND;

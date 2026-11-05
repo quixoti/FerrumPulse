@@ -12,6 +12,9 @@ use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, 
 
 fn main() {
     #[cfg(windows)]
+    // SAFETY: Creating a named global Win32 mutex using static UTF-16 string literal to enforce
+    // single-instance execution. If another instance exists, FindWindowW safely searches top-level
+    // windows and brings the existing instance to the foreground.
     unsafe {
         let _mutex = CreateMutexW(None, true, w!("Global\\FerrumPulse_SingleInstance_Mutex"));
         if GetLastError() == ERROR_ALREADY_EXISTS {

@@ -478,10 +478,14 @@
                     <span class="font-mono text-muted-foreground" id="size-win-temp">-</span>
                   </label>
                   <label class="checkbox-row">
-                    <input type="checkbox" id="chk-clean-d3d" checked class="checkbox">
+                    <input type="checkbox" id="chk-clean-d3d" class="checkbox">
                     <span class="flex-1 text-white">DirectX Shader Cache (D3DSCache / NV / AMD)</span>
-                    <span class="font-mono text-muted-foreground" id="size-d3d-cache">-</span>
+                    <span class="badge badge-outline text-amber-400 font-mono text-[10px]">Troubleshooting Only</span>
+                    <span class="font-mono text-muted-foreground ml-2" id="size-d3d-cache">-</span>
                   </label>
+                  <div class="text-[11px] text-amber-300/90 bg-amber-500/10 p-2 rounded border border-amber-500/20 leading-relaxed">
+                    ⚠️ <strong>Notice:</strong> Clearing shader caches causes temporary compilation stutter on the next launch of modern DX12/Vulkan titles. Recommended only when troubleshooting corrupted game assets.
+                  </div>
                   <label class="checkbox-row">
                     <input type="checkbox" id="chk-clean-recycle" checked class="checkbox">
                     <span class="flex-1 text-white">Empty Windows Recycle Bin</span>

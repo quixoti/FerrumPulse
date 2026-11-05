@@ -66,7 +66,20 @@ pub fn get_memory_stats() -> Result<MemoryStats, String> {
     }
 }
 
+/// Windows system processes that must NEVER have their working sets flushed to prevent OS instability.
+pub const PROTECTED_SYSTEM_PROCESSES: &[&str] = &[
+    "csrss.exe",
+    "lsass.exe",
+    "smss.exe",
+    "dwm.exe",
+    "audiodg.exe",
+    "services.exe",
+    "explorer.exe",
+    "systemsettings.exe",
+];
+
 /// Iterates running processes and purges inactive working sets via K32EmptyWorkingSet.
+/// Strictly enforces hard page fault prevention: the active foreground game and critical OS processes are never flushed.
 pub fn purge_working_sets() -> Result<MemoryTrimResult, String> {
     let before_stats = get_memory_stats()?;
     let mut trimmed_count: u32 = 0;
@@ -77,11 +90,26 @@ pub fn purge_working_sets() -> Result<MemoryTrimResult, String> {
         let mut sys = System::new();
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
-        for pid in sys.processes().keys() {
+        // HARD GUARD: Query foreground process PID to prevent flushing the active game window
+        let foreground_pid = crate::process::get_foreground_process().map(|(pid, _)| pid);
+
+        for (pid, process) in sys.processes() {
             let raw_pid = pid.as_u32();
 
             // Skip Idle, System, and kernel PIDs to maintain OS stability
             if raw_pid <= 4 {
+                continue;
+            }
+
+            // HARD GUARD: NEVER flush the active foreground game process!
+            // Doing so purges active textures/geometry into pagefile/standby, causing hard page faults and massive frame stutter.
+            if Some(raw_pid) == foreground_pid {
+                continue;
+            }
+
+            // HARD GUARD: Skip protected Windows system and audio subsystem processes
+            let proc_name = process.name().to_string_lossy().to_lowercase();
+            if PROTECTED_SYSTEM_PROCESSES.iter().any(|&p| proc_name == p || proc_name.ends_with(p)) {
                 continue;
             }
 
@@ -97,7 +125,7 @@ pub fn purge_working_sets() -> Result<MemoryTrimResult, String> {
 
             if let Ok(handle) = handle_res {
                 // SAFETY: K32EmptyWorkingSet cleanly removes inactive physical pages
-                // from the process working set and commits them to the paging system.
+                // from the background process working set and commits them to the paging system.
                 let purge_res = unsafe { K32EmptyWorkingSet(handle) };
                 if purge_res.as_bool() {
                     trimmed_count += 1;

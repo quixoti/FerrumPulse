@@ -1028,7 +1028,7 @@ if (el.btnExecClean) {
       const res = await invoke('cmd_clean_storage', {
         cleanUserTemp: el.chkCleanUserTemp ? el.chkCleanUserTemp.checked : true,
         cleanWinTemp: el.chkCleanWinTemp ? el.chkCleanWinTemp.checked : true,
-        cleanD3dCache: el.chkCleanD3d ? el.chkCleanD3d.checked : true,
+        cleanD3dCache: el.chkCleanD3d ? el.chkCleanD3d.checked : false,
         emptyRecycleBin: el.chkCleanRecycle ? el.chkCleanRecycle.checked : true,
       });
       if (res?.freed_mb) addFreedRam(res.freed_mb);

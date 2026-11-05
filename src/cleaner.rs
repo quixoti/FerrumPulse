@@ -9,12 +9,20 @@ use windows::Win32::UI::Shell::{
     SHEmptyRecycleBinW, SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND,
 };
 
+/// Advisory notice for DirectX shader caches:
+/// Clearing the shader cache forces modern DX12 and Vulkan titles to recompile pipelines on the next launch,
+/// resulting in temporary frametime stutter and hitching. It should be treated as a targeted troubleshooting step
+/// rather than a routine daily maintenance task.
+pub const D3D_SHADER_CACHE_WARNING: &str =
+    "Notice: Clearing DirectX Shader Cache will cause temporary pipeline compilation hitches on next game launch. Recommended only for troubleshooting corrupt shaders.";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageScanResult {
     pub user_temp_mb: f64,
     pub windows_temp_mb: f64,
     pub directx_cache_mb: f64,
     pub total_cleanable_mb: f64,
+    pub shader_cache_warning: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +49,7 @@ pub fn scan_storage() -> StorageScanResult {
         windows_temp_mb: to_mb(win_bytes),
         directx_cache_mb: to_mb(d3d_bytes),
         total_cleanable_mb: to_mb(total_bytes),
+        shader_cache_warning: D3D_SHADER_CACHE_WARNING,
     }
 }
 

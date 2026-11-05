@@ -56,6 +56,7 @@ fn test_battery_telemetry_query() {
 fn test_storage_scanner() {
     let scan = scan_storage();
     assert!(scan.total_cleanable_mb >= 0.0);
+    assert!(!scan.shader_cache_warning.is_empty());
 }
 
 #[test]
@@ -67,5 +68,26 @@ fn test_daemon_config_defaults() {
     assert!(cfg.throttle_background);
     assert!(cfg.target_games.contains(&"cs2.exe".to_string()));
     assert!(cfg.throttled_apps.contains(&"chrome.exe".to_string()));
+    // Verify companion apps are never throttled by default
+    assert!(!cfg.throttled_apps.contains(&"discord.exe".to_string()));
+    assert!(!cfg.throttled_apps.contains(&"epicgameslauncher.exe".to_string()));
+}
+
+#[test]
+fn test_protected_throttling_whitelist() {
+    use ferrumpulse::process::PROTECTED_THROTTLING_WHITELIST;
+    assert!(PROTECTED_THROTTLING_WHITELIST.contains(&"discord.exe"));
+    assert!(PROTECTED_THROTTLING_WHITELIST.contains(&"obs64.exe"));
+    assert!(PROTECTED_THROTTLING_WHITELIST.contains(&"audiodg.exe"));
+    assert!(PROTECTED_THROTTLING_WHITELIST.contains(&"dwm.exe"));
+    assert!(PROTECTED_THROTTLING_WHITELIST.contains(&"steam.exe"));
+}
+
+#[test]
+fn test_protected_memory_processes() {
+    use ferrumpulse::memory::PROTECTED_SYSTEM_PROCESSES;
+    assert!(PROTECTED_SYSTEM_PROCESSES.contains(&"csrss.exe"));
+    assert!(PROTECTED_SYSTEM_PROCESSES.contains(&"dwm.exe"));
+    assert!(PROTECTED_SYSTEM_PROCESSES.contains(&"audiodg.exe"));
 }
 

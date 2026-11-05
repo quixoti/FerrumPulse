@@ -281,3 +281,21 @@ pub fn set_display_refresh_rate(target_hz: u32) -> Result<(), String> {
         Ok(())
     }
 }
+
+/// Enforces failsafe controls when transitioning to battery power or during Modern Standby / Sleep:
+/// 1. Reverts CPU Core Parking from unparked (100%) back to stock (50%).
+/// 2. Switches active Windows power scheme back to Balanced.
+/// 3. Releases high-precision multimedia timer lock (allowing deep processor C-states like C6/C7/C10/DRIPS).
+pub fn enforce_battery_and_standby_failsafe() {
+    #[cfg(windows)]
+    {
+        // 1. Relinquish multimedia timer precision request to allow deep CPU C-states (preventing closed-bag overheating)
+        crate::process::unlock_high_resolution_timer();
+
+        // 2. Revert Core Parking from 100% (unparked) back to stock 50%
+        let _ = crate::power::set_core_unparking(false);
+
+        // 3. Revert power scheme to Balanced
+        let _ = crate::power::set_power_scheme("balanced");
+    }
+}

@@ -73,14 +73,41 @@ impl Default for DaemonConfig {
                 "msedge.exe".into(),
                 "brave.exe".into(),
                 "firefox.exe".into(),
-                "discord.exe".into(),
                 "steamwebhelper.exe".into(),
-                "epicgameslauncher.exe".into(),
                 "battlenet.exe".into(),
                 "spotify.exe".into(),
             ],
         }
     }
+}
+
+/// Hardcoded protected application whitelist that must NEVER be throttled under any circumstance.
+/// Protects voice communications, live streaming captures, core Windows audio, and primary launchers.
+pub const PROTECTED_THROTTLING_WHITELIST: &[&str] = &[
+    // Voice & Communication
+    "discord.exe",
+    "discordcanary.exe",
+    "ts3client_win64.exe",
+    // Broadcast & Capture
+    "obs64.exe",
+    "obs32.exe",
+    "streamlabs obs.exe",
+    // Windows Core Audio & System
+    "audiodg.exe",
+    "dwm.exe",
+    "explorer.exe",
+    "systemsettings.exe",
+    // Game Launchers
+    "steam.exe",
+    "epicgameslauncher.exe",
+    "riotclientservices.exe",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoostResult {
+    Success,
+    AccessDenied,
+    Failed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,10 +172,27 @@ impl ProcessPacingManager {
         std::thread::spawn(move || {
             let mut last_boosted_pid: Option<u32> = None;
             let mut last_throttled_pids: HashSet<u32> = HashSet::new();
+            let mut access_denied_blacklist: HashSet<u32> = HashSet::new();
+            let mut was_ac_connected = true;
             let mut timer_active = false;
 
             while running_clone.load(Ordering::SeqCst) {
                 let current_cfg = { config_clone.lock().unwrap().clone() };
+                let battery_telem = crate::battery::get_battery_telemetry();
+
+                // Laptop AC/DC Power Failsafe:
+                // When transitioning from AC to Battery power, immediately revert core parking to stock 50%,
+                // switch to Balanced power scheme, and release any multimedia timer locks.
+                if was_ac_connected && !battery_telem.ac_connected {
+                    crate::battery::enforce_battery_and_standby_failsafe();
+                    if timer_active {
+                        unlock_high_resolution_timer();
+                        timer_active = false;
+                    }
+                    was_ac_connected = false;
+                } else if !was_ac_connected && battery_telem.ac_connected {
+                    was_ac_connected = true;
+                }
 
                 if !current_cfg.enabled {
                     // Revert any changes if disabled
@@ -168,12 +212,8 @@ impl ProcessPacingManager {
                     st.boosted_pid = None;
                     st.throttled_count = 0;
 
-                    let sleep_ms = if crate::battery::get_battery_telemetry().ac_connected {
-                    1000
-                } else {
-                    3000
-                };
-                std::thread::sleep(Duration::from_millis(sleep_ms));
+                    let sleep_ms = if battery_telem.ac_connected { 1000 } else { 3000 };
+                    std::thread::sleep(Duration::from_millis(sleep_ms));
                     continue;
                 }
 
@@ -191,24 +231,41 @@ impl ProcessPacingManager {
                 };
 
                 if is_game {
-                    // Lock scheduler timer to 1.0ms for sub-millisecond input/frame pacing
-                    if !timer_active {
+                    // Lock scheduler timer to 1.0ms for sub-millisecond input/frame pacing (only while on AC or enabled)
+                    if !timer_active && battery_telem.ac_connected {
                         lock_high_resolution_timer();
                         timer_active = true;
                     }
 
                     if let Some((fg_pid, ref fg_name)) = fg_proc {
-                        // Boost foreground game
+                        // Boost foreground game with anti-cheat graceful fallback and blacklisting
                         if current_cfg.boost_priority && last_boosted_pid != Some(fg_pid) {
-                            if let Some(old_pid) = last_boosted_pid {
-                                revert_priority(old_pid);
-                            }
-                            if boost_process_priority(fg_pid) {
-                                last_boosted_pid = Some(fg_pid);
+                            if access_denied_blacklist.contains(&fg_pid) {
+                                // Anti-cheat protected process: skip quietly without tight-loop syscall retries
+                            } else {
+                                if let Some(old_pid) = last_boosted_pid {
+                                    revert_priority(old_pid);
+                                }
+                                match boost_process_priority(fg_pid) {
+                                    BoostResult::Success => {
+                                        last_boosted_pid = Some(fg_pid);
+                                    }
+                                    BoostResult::AccessDenied => {
+                                        eprintln!(
+                                            "[FerrumPulse] Anti-cheat detected on PID {} ({}). Blacklisting from priority elevation.",
+                                            fg_pid, fg_name
+                                        );
+                                        access_denied_blacklist.insert(fg_pid);
+                                        last_boosted_pid = None;
+                                    }
+                                    BoostResult::Failed => {
+                                        last_boosted_pid = None;
+                                    }
+                                }
                             }
                         }
 
-                        // Throttle background apps
+                        // Throttle background apps (skips protected companion whitelist)
                         let mut throttled_count = 0;
                         if current_cfg.throttle_background {
                             let newly_throttled = throttle_background_processes(
@@ -333,30 +390,51 @@ pub fn get_foreground_process() -> Option<(u32, String)> {
     }
 }
 
-/// Sets process priority to HIGH_PRIORITY_CLASS.
-pub fn boost_process_priority(pid: u32) -> bool {
+/// Sets process priority to HIGH_PRIORITY_CLASS with defensive error checking and handle limits.
+/// Restricts boost ceiling strictly to HIGH_PRIORITY_CLASS (REALTIME is banned to prevent thread starvation of DWM/Audio).
+pub fn boost_process_priority(pid: u32) -> BoostResult {
     #[cfg(windows)]
     {
-        // SAFETY: Opening process with SET_INFORMATION access
+        // SAFETY: Requesting minimum required rights: PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION.
+        // Never requests PROCESS_ALL_ACCESS to respect anti-cheat boundaries.
         let handle_res = unsafe {
-            OpenProcess(PROCESS_SET_INFORMATION, false, pid)
+            OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION,
+                false,
+                pid,
+            )
         };
 
-        if let Ok(handle) = handle_res {
-            // SAFETY: Elevating game priority to HIGH
-            let res = unsafe { SetPriorityClass(handle, HIGH_PRIORITY_CLASS) };
-            unsafe {
-                let _ = CloseHandle(handle);
-            };
-            return res.is_ok();
+        match handle_res {
+            Ok(handle) => {
+                // SAFETY: Elevating game priority strictly to HIGH_PRIORITY_CLASS.
+                // Under NO circumstances is REALTIME_PRIORITY_CLASS permitted, preventing thread starvation
+                // of DWM, core audio (audiodg.exe), and input subsystems.
+                let res = unsafe { SetPriorityClass(handle, HIGH_PRIORITY_CLASS) };
+                unsafe {
+                    let _ = CloseHandle(handle);
+                };
+                if res.is_ok() {
+                    BoostResult::Success
+                } else {
+                    BoostResult::Failed
+                }
+            }
+            Err(e) => {
+                // Check for ERROR_ACCESS_DENIED (0x80070005) commonly returned by Vanguard, EAC, or BattlEye
+                if e.code().0 as u32 == 0x80070005 {
+                    BoostResult::AccessDenied
+                } else {
+                    BoostResult::Failed
+                }
+            }
         }
-        false
     }
 
     #[cfg(not(windows))]
     {
         let _ = pid;
-        true
+        BoostResult::Success
     }
 }
 
@@ -406,6 +484,12 @@ pub fn throttle_background_processes(
             }
 
             let proc_name = process.name().to_string_lossy().to_lowercase();
+
+            // HARD GUARD: Skip apps in the protected companion whitelist (Voice, OBS, Audio, System, Launchers)
+            if PROTECTED_THROTTLING_WHITELIST.iter().any(|&p| proc_name == p || proc_name.ends_with(p)) {
+                continue;
+            }
+
             let matches = target_names.iter().any(|target| {
                 let t_lower = target.to_lowercase();
                 proc_name == t_lower || proc_name.ends_with(&t_lower)

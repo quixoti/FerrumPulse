@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FerrumPulse | Gaming &amp; PC Optimizer</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/shadcn.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style id="user-custom-css"></style>
+</head>
+<body>
+  <div class="app-layout">
+    
+    <!-- Raycast/Linear Frameless Top Titlebar (Native Drag Region) -->
+    <header class="app-header" data-tauri-drag-region>
+      <div class="header-brand" data-tauri-drag-region>
+        <div class="brand-logo-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-black">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div class="flex items-center gap-1.5" data-tauri-drag-region>
+          <span class="text-xs font-semibold tracking-tight text-white font-mono">FerrumPulse</span>
+          <span class="badge badge-admin">ADMIN</span>
+        </div>
+      </div>
+
+      <!-- Center Raycast Quick Command / Search Bar -->
+      <div class="command-search-wrap" data-tauri-drag-region>
+        <div class="command-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="command-search-input" placeholder="Search commands, tweaks &amp; settings..." spellcheck="false" autocomplete="off">
+          <kbd class="kbd-hint">Ctrl K</kbd>
+        </div>
+      </div>
+
+      <!-- Right Window Controls & Quick Actions -->
+      <div class="header-actions" data-tauri-drag-region>
+        <div class="status-indicator-pill" id="header-battery-pill" title="Hardware AC/DC Line Status" data-tauri-drag-region>
+          <span class="status-dot" id="battery-status-dot"></span>
+          <span class="text-xs text-muted-foreground font-mono" id="top-battery-label">100% ⚡ AC</span>
+        </div>
+        <div class="status-indicator-pill" title="Process Priority Pacing Daemon" data-tauri-drag-region>
+          <span class="status-dot"></span>
+          <span class="text-xs text-muted-foreground font-mono" id="top-daemon-label">Daemon Active</span>
+        </div>
+        <button id="btn-quick-boost" class="btn btn-primary btn-xs" title="Instant Game Boost (Alt+B)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="h-3 w-3"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span>Boost</span>
+          <kbd class="kbd">Alt+B</kbd>
+        </button>
+        <button id="btn-quick-trim" class="btn btn-outline btn-xs" title="Trim Inactive RAM Working Sets (Alt+T)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          <span>Trim</span>
+          <kbd class="kbd">Alt+T</kbd>
+        </button>
+
+        <!-- Frameless Window Controls -->
+        <div class="window-controls-group">
+          <button id="btn-window-min" class="window-btn" title="Minimize">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="6" x2="10" y2="6"></line></svg>
+          </button>
+          <button id="btn-window-max" class="window-btn" title="Maximize">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="7" height="7" rx="1"></rect></svg>
+          </button>
+          <button id="btn-window-close" class="window-btn window-btn-close" title="Hide to Tray">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5"></line><line x1="9.5" y1="2.5" x2="2.5" y2="9.5"></line></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Linear-Style Segmented Navigation Strip -->
+    <nav class="nav-segment-bar" data-tauri-drag-region>
+      <div class="nav-segments-list">
+        <button class="tabs-trigger active" data-tab="tab-overview">
+          <span class="nav-num">1</span>
+          <span>Overview</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-cpu">
+          <span class="nav-num">2</span>
+          <span>CPU &amp; Power</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-process">
+          <span class="nav-num">3</span>
+          <span>Game Daemon</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-tweaks">
+          <span class="nav-num">4</span>
+          <span>Safe Tweaks</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-storage">
+          <span class="nav-num">5</span>
+          <span>RAM &amp; Storage</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-battery">
+          <span class="nav-num">6</span>
+          <span>Battery &amp; Eco</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-settings">
+          <span class="nav-num">7</span>
+          <span>Settings</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content Shell -->
+    <main class="main-container">
+      
+      <!-- Top Bento Translucent Metric Cells -->
+      <section class="summary-cards-grid">
+        <!-- Cell 1: RAM Telemetry & Sparkline -->
+        <div class="metric-cell">
+          <div class="cell-header">
+            <span class="cell-label">PHYSICAL MEMORY</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cell-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          </div>
+          <div class="cell-metric-row">
+            <span class="cell-value" id="ram-pct-text">0%</span>
+            <span class="cell-sub" id="ram-used-avail-text">0 GB / 0 GB</span>
+          </div>
+          <div class="progress">
+            <div class="progress-indicator" id="ram-progress" style="width: 0%;"></div>
+          </div>
+          <div class="sparkline-box">
+            <canvas id="ram-sparkline" width="220" height="34"></canvas>
+          </div>
+        </div>
+
+        <!-- Cell 2: CPU Core Parking -->
+        <div class="metric-cell">
+          <div class="cell-header">
+            <span class="cell-label">CPU CORE PARKING (AC)</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cell-icon"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
+          </div>
+          <div class="cell-metric-row">
+            <span class="cell-value" id="cpu-parking-pct-text">50%</span>
+            <span class="badge badge-secondary" id="cpu-parking-state-badge">50% Stock</span>
+          </div>
+          <div class="progress">
+            <div class="progress-indicator" id="cpu-progress" style="width: 50%;"></div>
+          </div>
+          <div class="cell-hint">C0 Active Core State: <strong class="text-white font-mono">100% Unparked</strong></div>
+        </div>
+
+        <!-- Cell 3: Active Power Scheme with Compact Truncated GUID Pill -->
+        <div class="metric-cell">
+          <div class="cell-header">
+            <span class="cell-label">POWER SCHEME</span>
+            <button class="btn btn-outline btn-xs" id="btn-quick-set-high">Set High</button>
+          </div>
+          <div class="cell-metric-row">
+            <span class="cell-value text-base" id="dash-scheme-name">Balanced</span>
+          </div>
+          <div class="cell-guid-wrap">
+            <span class="guid-label">GUID</span>
+            <div class="guid-badge-pill" id="dash-scheme-guid" title="Click to copy full GUID">
+              <span id="dash-guid-text">381b4222...</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3 opacity-60"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cell 4: Foreground Game Daemon -->
+        <div class="metric-cell">
+          <div class="cell-header">
+            <span class="cell-label">PROCESS DAEMON</span>
+            <span class="badge badge-success">1000ms</span>
+          </div>
+          <div class="cell-metric-row">
+            <span class="cell-value text-sm truncate" id="dash-active-game-text">Desktop Focus</span>
+          </div>
+          <div class="cell-footer-row">
+            <span>Throttled: <strong class="text-white font-mono" id="dash-throttled-count">0</strong></span>
+            <span class="font-mono text-xs" id="dash-pid-label">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabs Content Section -->
+      <div class="tabs-container">
+
+        <!-- TAB 1: OVERVIEW -->
+        <div id="tab-overview" class="tabs-content active">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3 class="card-title">System Optimizer Overview</h3>
+              <p class="card-description">Hardware power index and process priority governor running with zero kernel drivers or risky OS surgery.</p>
+            </div>
+            <div class="card-content divide-y">
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">One-Click Complete Game Boost</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Simultaneously unparks all CPU cores (100%), sets High Performance power scheme, and purges inactive RAM working sets.</div>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btn-hero-boost">Activate Boost</button>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">Anti-Cheat Engine Status</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">FerrumPulse operates strictly via official, documented Win32 user-mode APIs. Vanguard, Easy Anti-Cheat, and BattlEye remain fully operational.</div>
+                </div>
+                <span class="badge badge-success">100% Whitelisted</span>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">Background System Tray Behavior</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Closing the dashboard minimizes FerrumPulse to the Windows system tray to allow the dynamic priority daemon to pace games ambiently.</div>
+                </div>
+                <span class="badge badge-outline">Minimizes to Tray</span>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">High-Precision Scheduler Timer (1.0ms)</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Dynamically locks system timer resolution from 15.6ms to 1.0ms while gaming, eliminating micro-stutters and frame latency spikes.</div>
+                </div>
+                <span class="badge badge-success">Dynamic 1.0ms Lock</span>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">Launch on Windows Startup</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Start FerrumPulse automatically in the background system tray when your PC boots.</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-toggle-autostart-overview">Enable Autostart</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 2: CPU & POWER -->
+        <div id="tab-cpu" class="tabs-content">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3 class="card-title">Win32 PowrProf Processor Subgroup Management</h3>
+              <p class="card-description">Configure the AC min cores parking index (GUID 0cc5b647) and switch active Windows hardware power plans.</p>
+            </div>
+            <div class="card-content divide-y">
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">CPU Core Parking (AC Min Cores Index)</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">When unparked (100%), all physical and logical CPU cores remain in active C0 states, eliminating core wake-up latencies and stutter in CPU-bound games.</div>
+                </div>
+                <div class="segmented-control">
+                  <button class="segmented-item" id="btn-set-unpark-50">50% (Default)</button>
+                  <button class="segmented-item active" id="btn-set-unpark-100">100% (Unpark All)</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Windows Power Scheme</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Instantly activates High Performance (8c5e7fda), Ultimate Performance, or Balanced (381b4222) power profiles.</div>
+                </div>
+                <div class="segmented-control">
+                  <button class="segmented-item" id="btn-plan-balanced">Balanced</button>
+                  <button class="segmented-item" id="btn-plan-high">High Performance</button>
+                  <button class="segmented-item" id="btn-plan-ultimate">Ultimate</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <div class="font-medium text-white text-sm">Current Power Scheme GUID</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Active hardware scheme GUID registered in the Windows registry.</div>
+                </div>
+                <div class="font-mono text-xs text-neutral-300 bg-neutral-900/60 px-3 py-1.5 rounded border border-white/10" id="cpu-scheme-guid">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 3: GAME DAEMON -->
+        <div id="tab-process" class="tabs-content">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3 class="card-title">Dynamic Game Process Pacing Daemon</h3>
+              <p class="card-description">Background thread monitoring foreground window focus every 1000ms via GetForegroundWindow and GetWindowThreadProcessId.</p>
+            </div>
+            <div class="card-content divide-y">
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Elevate Active Game Priority to High</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Automatically sets process priority to <code>HIGH_PRIORITY_CLASS</code> when a game window is focused, reverting upon Alt-Tab.</div>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="chk-daemon-boost" checked>
+                  <span class="switch-thumb"></span>
+                </label>
+              </div>
+
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Throttle Background Launchers &amp; Browsers (EcoQoS)</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Applies <code>ProcessPowerThrottling</code> (execution speed limits) to Discord, Chrome, Edge, and Steam during gameplay.</div>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="chk-daemon-throttle" checked>
+                  <span class="switch-thumb"></span>
+                </label>
+              </div>
+
+              <div class="setting-row flex-col items-start gap-3">
+                <div class="w-full flex items-center justify-between">
+                  <span class="font-medium text-white text-sm">Configured Target Executables</span>
+                  <span class="text-xs text-muted-foreground">Auto-boosted on focus</span>
+                </div>
+                <div class="flex flex-wrap gap-2 w-full" id="game-tags-list">
+                  <!-- Injected via JavaScript -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 4: SAFE TWEAKS -->
+        <div id="tab-tweaks" class="tabs-content">
+          <div class="glass-card">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Safe Windows Debloat &amp; Network Pacing</h3>
+                <p class="card-description">Zero destructive modifications. Never alters Windows Update, Store, Defender, or Audio. Every tweak includes an instant Revert option.</p>
+              </div>
+              <button class="btn btn-outline btn-xs" id="btn-revert-all-tweaks">Restore Defaults</button>
+            </div>
+            <div class="card-content divide-y">
+              <!-- Tweak 1 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Connected User Experiences &amp; Telemetry (DiagTrack)</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Stops and sets DiagTrack service to Disabled. Eliminates periodic background CPU and disk polling spikes during matches.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-diagtrack">Disable DiagTrack</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-diagtrack">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 2 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Windows Game Bar DVR Background Capture</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Sets AppCaptureEnabled and GameDVR_Enabled to 0 in HKCU to prevent background video recording from stealing GPU frametimes.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-gamedvr">Disable GameDVR</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-gamedvr">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 3 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Multimedia &amp; Network Gaming Pacing</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Sets NetworkThrottlingIndex to 0xffffffff (disabled network throttling) and SystemResponsiveness to 0 in Multimedia\SystemProfile.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-network">Optimize Pacing</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-network">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 4 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Windows 11 Global High-Precision Timer</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Configures GlobalTimerResolutionRequests in Session Manager kernel to enforce 1.0ms timer precision across borderless windowed games.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-global-timer">Enable Global Timer</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-global-timer">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 5 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Esports 1:1 Raw Mouse Input</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Neutralizes Windows pointer acceleration curves (MouseSpeed 0) and applies changes instantly via SPI_SETMOUSE for 1:1 crosshair tracking.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-raw-mouse">Enable Raw Mouse</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-raw-mouse">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 6 -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Windows Startup Ambient Daemon</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Registers FerrumPulse in HKCU Run to boot silently in the system tray and pace processes in the background.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-autostart">Enable Autostart</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 5: RAM & STORAGE (Cleaned Up Prominent CTA) -->
+        <div id="tab-storage" class="tabs-content">
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Memory Purge Hero Card -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3 class="card-title">RAM Working-Set Purge</h3>
+                <p class="card-description">Flush dormant, unreferenced pages from active processes back to the paging system using K32EmptyWorkingSet.</p>
+              </div>
+              <div class="card-content space-y-4">
+                <div class="stats-panel-box space-y-2 text-xs">
+                  <div class="flex justify-between text-muted-foreground"><span>Total Physical RAM:</span><strong class="text-white font-mono" id="mem-total-stat">-</strong></div>
+                  <div class="flex justify-between text-muted-foreground"><span>Available Memory:</span><strong class="text-white font-mono" id="mem-avail-stat">-</strong></div>
+                </div>
+                <!-- Prominent CTA directly below stats -->
+                <button class="btn btn-primary btn-cta w-full" id="btn-purge-ram">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" class="btn-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                  <span>Purge Working Sets</span>
+                  <kbd class="kbd">Alt+T</kbd>
+                </button>
+              </div>
+            </div>
+
+            <!-- Storage Cleaner Card -->
+            <div class="glass-card">
+              <div class="card-header flex-row items-center justify-between">
+                <div>
+                  <h3 class="card-title">DirectX Shader &amp; Temp Cleaner</h3>
+                  <p class="card-description">Safe purge of %TEMP%, D3DSCache, and NVIDIA/AMD caches.</p>
+                </div>
+                <button class="btn btn-outline btn-xs" id="btn-scan-storage">Scan Size</button>
+              </div>
+              <div class="card-content space-y-3">
+                <div class="space-y-2 text-xs">
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="chk-clean-user-temp" checked class="checkbox">
+                    <span class="flex-1 text-white">User Temp Directory (%TEMP%)</span>
+                    <span class="font-mono text-muted-foreground" id="size-user-temp">-</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="chk-clean-win-temp" checked class="checkbox">
+                    <span class="flex-1 text-white">Windows Temp (C:\Windows\Temp)</span>
+                    <span class="font-mono text-muted-foreground" id="size-win-temp">-</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="chk-clean-d3d" checked class="checkbox">
+                    <span class="flex-1 text-white">DirectX Shader Cache (D3DSCache / NV / AMD)</span>
+                    <span class="font-mono text-muted-foreground" id="size-d3d-cache">-</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="chk-clean-recycle" checked class="checkbox">
+                    <span class="flex-1 text-white">Empty Windows Recycle Bin</span>
+                    <span class="font-mono text-muted-foreground">Silent</span>
+                  </label>
+                </div>
+
+                <div class="pt-3 border-t border-white/10 flex items-center justify-between">
+                  <span class="text-xs text-muted-foreground">Cleanable: <strong class="text-white font-mono" id="size-total-cleanable">0 MB</strong></span>
+                  <button class="btn btn-primary btn-sm" id="btn-exec-clean">Clean Targets</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 6: BATTERY & ECO -->
+        <div id="tab-battery" class="tabs-content">
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Battery Status & Hero Controls -->
+            <div class="glass-card">
+              <div class="card-header flex-row items-center justify-between">
+                <div>
+                  <h3 class="card-title">Laptop Power &amp; Battery State</h3>
+                  <p class="card-description">Real-time AC/DC detection and one-click Eco Profile toggle.</p>
+                </div>
+                <span class="badge badge-outline font-mono" id="bat-profile-badge">AC Performance</span>
+              </div>
+              <div class="card-content space-y-4">
+                <div class="stats-panel-box space-y-2.5 text-xs">
+                  <div class="flex justify-between items-center text-muted-foreground">
+                    <span>Battery Percentage:</span>
+                    <strong class="text-white font-mono text-base" id="bat-pct-hero">100%</strong>
+                  </div>
+                  <div class="flex justify-between text-muted-foreground">
+                    <span>Power Line State:</span>
+                    <strong class="text-white font-mono" id="bat-ac-status">Plugged In (AC)</strong>
+                  </div>
+                  <div class="flex justify-between text-muted-foreground">
+                    <span>Estimated Remaining Time:</span>
+                    <strong class="text-white font-mono" id="bat-time-remaining">Continuous (AC)</strong>
+                  </div>
+                  <div class="flex justify-between text-muted-foreground">
+                    <span>Display Refresh Rate:</span>
+                    <strong class="text-white font-mono" id="bat-refresh-rate">60 Hz</strong>
+                  </div>
+                </div>
+
+                <div class="flex gap-2">
+                  <button class="btn btn-primary flex-1 btn-sm" id="btn-toggle-battery-saver">Engage Battery Saver</button>
+                  <button class="btn btn-outline btn-sm" id="btn-set-refresh-60">Set 60Hz</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Eco Policy Configuration -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3 class="card-title">Automated Laptop Eco Policies</h3>
+                <p class="card-description">Intelligent adjustments engaged whenever AC power is unplugged.</p>
+              </div>
+              <div class="card-content space-y-3">
+                <div class="setting-row">
+                  <div class="max-w-xl">
+                    <div class="font-medium text-white text-xs">Auto-Switch on AC Disconnect</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Automatically engage Battery Saver when unplugged, restore AC Boost when plugged in.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-auto-battery-switch" checked>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row">
+                  <div class="max-w-xl">
+                    <div class="font-medium text-white text-xs">Dynamic 60Hz Display Rate on DC</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Steps down 144Hz/240Hz panels to 60Hz on battery to preserve display and GPU wattage.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-battery-refresh-rate" checked>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row">
+                  <div class="max-w-xl">
+                    <div class="font-medium text-white text-xs">Aggressive DC Core Parking (10%)</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Allows inactive CPU cores to sleep in deep C6/C7 states while on battery power.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-battery-core-parking" checked>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row">
+                  <div class="max-w-xl">
+                    <div class="font-medium text-white text-xs">Limit Max Processor State to 99%</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Disables aggressive Intel/AMD Turbo boost clock spikes on DC power.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-battery-turbo-limit" checked>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 7: SETTINGS & CUSTOMIZATION -->
+        <div id="tab-settings" class="tabs-content">
+          
+          <!-- Card 1: Appearance & Window Theme -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h3 class="card-title">Appearance &amp; Window Theme</h3>
+              <p class="card-description">Configure the transparent background opacity, accent highlight colors, and window corner rounding.</p>
+            </div>
+            <div class="card-content divide-y">
+              <!-- Window Opacity -->
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Translucent Window Opacity</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Adjust the pitch-black opacity over the native Windows Acrylic blur in real time.</div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" id="setting-bg-opacity" min="30" max="95" value="55" class="slider-range">
+                  <span class="font-mono text-xs text-white bg-neutral-900/60 px-2 py-1 rounded border border-white/10" id="val-bg-opacity">55%</span>
+                </div>
+              </div>
+
+              <!-- Card Glass Opacity -->
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Card Glass Opacity</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Control the contrast of container glass surfaces and borders.</div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" id="setting-card-opacity" min="1" max="20" value="4" class="slider-range">
+                  <span class="font-mono text-xs text-white bg-neutral-900/60 px-2 py-1 rounded border border-white/10" id="val-card-opacity">4%</span>
+                </div>
+              </div>
+
+              <!-- Accent Color Palette -->
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Accent Highlight Theme</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Sets the accent color for active buttons, badges, tabs, and meters.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="theme-color-pill active" data-color="white" style="--pill-color: #ffffff;" title="Raycast Monochrome"></button>
+                  <button class="theme-color-pill" data-color="cyan" style="--pill-color: #38bdf8;" title="Electric Cyan"></button>
+                  <button class="theme-color-pill" data-color="emerald" style="--pill-color: #10b981;" title="Emerald Green"></button>
+                  <button class="theme-color-pill" data-color="amber" style="--pill-color: #f59e0b;" title="Amber Orange"></button>
+                  <button class="theme-color-pill" data-color="purple" style="--pill-color: #a855f7;" title="Neon Purple"></button>
+                </div>
+              </div>
+
+              <!-- Window Perimeter Geometry -->
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">Window Perimeter Geometry</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Toggle between Windows 11 hardware anti-aliased rounded corners and sharp tactical edges.</div>
+                </div>
+                <div class="segmented-control">
+                  <button class="segmented-item active" id="btn-corner-rounded">Rounded (12px)</button>
+                  <button class="segmented-item" id="btn-corner-sharp">Sharp (0px)</button>
+                </div>
+              </div>
+
+              <!-- UI Scale & Density -->
+              <div class="setting-row">
+                <div class="max-w-xl">
+                  <div class="font-medium text-white text-sm">UI Layout Scale &amp; Density</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Scale elements and typography for compact esports displays or large 4K monitors.</div>
+                </div>
+                <div class="segmented-control">
+                  <button class="segmented-item" id="btn-scale-compact">Compact (90%)</button>
+                  <button class="segmented-item active" id="btn-scale-default">Default (100%)</button>
+                  <button class="segmented-item" id="btn-scale-roomy">Roomy (110%)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Advanced Custom CSS Overrides & Scripting -->
+          <div class="glass-card mt-4">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Live Custom CSS Engine</h3>
+                <p class="card-description">Instant live hot-reloading. Override any CSS class or :root token (<span class="font-mono text-white/70">--app-bg-opacity, --accent-color, --win-radius</span>). Saved automatically.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-emerald-400 font-mono flex items-center gap-1.5"><span class="status-dot"></span> Live Injection</span>
+              </div>
+            </div>
+            <div class="card-content space-y-3">
+              <!-- Preset Quick Snippets -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-muted-foreground font-medium">Quick Snippets:</span>
+                <button class="btn btn-secondary btn-xs" id="btn-snippet-oled">OLED Deep Black</button>
+                <button class="btn btn-secondary btn-xs" id="btn-snippet-cyberpunk">Cyberpunk Neon</button>
+                <button class="btn btn-secondary btn-xs" id="btn-snippet-frosted">Frosted Minimal</button>
+                <button class="btn btn-ghost btn-xs text-neutral-400" id="btn-snippet-clear">Clear Custom CSS</button>
+              </div>
+
+              <!-- Textarea Editor -->
+              <div class="relative">
+                <textarea id="txt-custom-css" class="custom-css-editor" spellcheck="false" placeholder="/* Enter custom CSS rules here. E.g.:&#10;:root {&#10;  --accent-color: #38bdf8;&#10;  --card-bg-opacity: 0.08;&#10;}&#10;.glass-card { box-shadow: 0 0 16px rgba(56, 189, 248, 0.25); }&#10;*/"></textarea>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <div class="text-xs text-muted-foreground font-mono" id="custom-css-status">0 rules active â€¢ Changes apply live</div>
+                <button class="btn btn-outline btn-xs" id="btn-reset-all-customizations">Reset All Customizations to Defaults</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mt-4">
+            <!-- Card 3: Application Behavior -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3 class="card-title">Window &amp; Tray Behavior</h3>
+                <p class="card-description">Customize system tray interactions, shortcuts, and startup mode.</p>
+              </div>
+              <div class="card-content divide-y">
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Close Button Action</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Clicking 'Ã—' in the titlebar.</div>
+                  </div>
+                  <div class="segmented-control">
+                    <button class="segmented-item active" id="btn-close-tray">Tray</button>
+                    <button class="segmented-item" id="btn-close-exit">Exit</button>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Global Summon Shortcut</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Show/hide from anywhere.</div>
+                  </div>
+                  <kbd class="kbd">Alt+Space</kbd>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Launch on Windows Boot</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Start in background tray.</div>
+                  </div>
+                  <button class="btn btn-secondary btn-xs" id="btn-settings-autostart">Toggle</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 4: Telemetry & Feedback -->
+            <div class="glass-card">
+              <div class="card-header">
+                <h3 class="card-title">Telemetry &amp; Feedback</h3>
+                <p class="card-description">Control polling refresh intervals and audio feedback.</p>
+              </div>
+              <div class="card-content divide-y">
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Telemetry Refresh Rate</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">RAM and battery poll rate.</div>
+                  </div>
+                  <div class="segmented-control">
+                    <button class="segmented-item" id="btn-poll-fast">800ms</button>
+                    <button class="segmented-item active" id="btn-poll-normal">1.2s</button>
+                    <button class="segmented-item" id="btn-poll-eco">3.0s</button>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Action Audio Chime</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Subtle sound on Boost/Purge.</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-setting-audio" checked>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="font-medium text-white text-xs">Factory Reset</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Clear all settings &amp; styles.</div>
+                  </div>
+                  <button class="btn btn-outline btn-xs" id="btn-reset-settings">Reset</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Raycast 40px Bottom Status & Action Bar -->
+    <footer class="app-status-bar">
+      <!-- Left: Live Telemetry Indicators -->
+      <div class="status-bar-left">
+        <div class="status-cell" id="bottom-daemon-status">
+          <span class="status-dot"></span>
+          <span class="font-mono text-xs text-muted-foreground">Daemon: Active [1.0s]</span>
+        </div>
+        <div class="status-cell-sep"></div>
+        <div class="status-cell" id="bottom-power-status">
+          <span class="font-mono text-xs text-muted-foreground">Power: 100% âš¡ AC</span>
+        </div>
+        <div class="status-cell-sep"></div>
+        <div class="status-cell" id="bottom-ram-freed">
+          <span class="font-mono text-xs text-muted-foreground">Freed: 0 MB</span>
+        </div>
+      </div>
+
+      <!-- Right: Raycast Keyboard Trigger Actions -->
+      <div class="status-bar-right">
+        <button class="status-action-pill" id="btn-status-boost" title="One-Click Game Boost (Alt+B)">
+          <span class="action-icon">âš¡</span>
+          <span>Game Boost</span>
+          <kbd class="kbd">Alt+B</kbd>
+        </button>
+        <button class="status-action-pill" id="btn-status-purge" title="Purge RAM Working Sets (Alt+T)">
+          <span class="action-icon">ðŸ§¹</span>
+          <span>Purge RAM</span>
+          <kbd class="kbd">Alt+T</kbd>
+        </button>
+        <button class="status-action-pill" id="btn-status-hide" title="Minimize / Hide to System Tray (Esc)">
+          <span>Hide</span>
+          <kbd class="kbd">Esc</kbd>
+        </button>
+      </div>
+    </footer>
+
+    <!-- Shadcn Toast Notification -->
+    <div id="toast" class="toast">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-white"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <span id="toast-message" class="text-xs font-medium text-white">Configuration updated</span>
+    </div>
+
+  </div>
+
+  <script src="src/app.js"></script>
+</body>
+</html>

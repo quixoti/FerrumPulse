@@ -1,0 +1,20 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# FerrumPulse compiled binaries & targets
+bin/*.exe
+bin/
+*.exe
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.bak
+
+# Logs & temp targets
+*.log
+ferrumpulse-target/

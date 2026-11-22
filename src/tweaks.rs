@@ -28,6 +28,9 @@ pub struct TweaksStatus {
     pub global_timer_enabled: bool,
     pub raw_mouse_enabled: bool,
     pub autostart_enabled: bool,
+    pub mmcss_gaming_priority: bool,
+    pub win32_priority_separation: bool,
+    pub system_responsiveness_optimized: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +48,9 @@ pub fn get_tweaks_status() -> TweaksStatus {
         global_timer_enabled: is_global_timer_resolution_enabled(),
         raw_mouse_enabled: is_raw_mouse_input_enabled(),
         autostart_enabled: is_autostart_enabled(),
+        mmcss_gaming_priority: is_mmcss_gaming_priority_enabled(),
+        win32_priority_separation: is_win32_priority_separation_optimized(),
+        system_responsiveness_optimized: is_system_responsiveness_optimized(),
     }
 }
 
@@ -309,7 +315,7 @@ pub fn is_network_pacing_optimized() -> bool {
         )
         .unwrap_or(20);
 
-        throttling_index == 0xffffffff && responsiveness == 0
+        throttling_index == 0xffffffff && (responsiveness == 10 || responsiveness == 0)
     }
 
     #[cfg(not(windows))]
@@ -322,7 +328,7 @@ pub fn toggle_network_pacing(optimize: bool) -> TweakActionResult {
     #[cfg(windows)]
     {
         let (throttling_val, resp_val) = if optimize {
-            (0xffffffffu32, 0u32) // Unthrottled network, 100% responsiveness to gaming
+            (0xffffffffu32, 10u32) // Unthrottled network, 10% reserve (optimal floor for modern Win10/11)
         } else {
             (10u32, 20u32) // Default Windows stock settings
         };
@@ -345,7 +351,7 @@ pub fn toggle_network_pacing(optimize: bool) -> TweakActionResult {
             TweakActionResult {
                 success: true,
                 message: if optimize {
-                    "Network Throttling removed & Multimedia Pacing set to 100% responsiveness.".into()
+                    "Network Throttling disabled & SystemResponsiveness set to 10%.".into()
                 } else {
                     "Network Throttling & Multimedia Pacing restored to stock defaults.".into()
                 },
@@ -363,9 +369,184 @@ pub fn toggle_network_pacing(optimize: bool) -> TweakActionResult {
         let _ = optimize;
         TweakActionResult {
             success: true,
-            message: "Mock Network Pacing toggle successful.".into(),
+            message: "Mock network pacing toggle successful.".into(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 3b. System Responsiveness Reserve (10% floor vs 20% stock)
+// ---------------------------------------------------------------------------
+
+pub fn is_system_responsiveness_optimized() -> bool {
+    #[cfg(windows)]
+    {
+        let responsiveness = read_registry_dword(
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"),
+            w!("SystemResponsiveness"),
+        )
+        .unwrap_or(20);
+
+        responsiveness == 10
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+pub fn toggle_system_responsiveness(optimize: bool) -> TweakActionResult {
+    #[cfg(windows)]
+    {
+        let resp_val = if optimize { 10u32 } else { 20u32 };
+        let res = write_registry_dword(
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"),
+            w!("SystemResponsiveness"),
+            resp_val,
+        );
+        match res {
+            Ok(_) => TweakActionResult {
+                success: true,
+                message: if optimize {
+                    "SystemResponsiveness reserve set to 10% (90% dedicated to gaming).".into()
+                } else {
+                    "SystemResponsiveness restored to Windows default (20%).".into()
+                },
+            },
+            Err(_) => TweakActionResult {
+                success: false,
+                message: "Administrator privileges required to modify SystemResponsiveness.".into(),
+            },
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = optimize;
+        TweakActionResult {
+            success: true,
+            message: "Mock SystemResponsiveness toggle successful.".into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3c. Multimedia Class Scheduling Category for Games (Tasks\\Games)
+// ---------------------------------------------------------------------------
+
+pub fn is_mmcss_gaming_priority_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        let cat = read_registry_sz(
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"),
+            w!("Scheduling Category"),
+        );
+        cat.as_deref() == Some("High")
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+pub fn toggle_mmcss_gaming_priority(enable: bool) -> TweakActionResult {
+    #[cfg(windows)]
+    {
+        let category = if enable { "High" } else { "Medium" };
+        let res = write_registry_sz(
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"),
+            w!("Scheduling Category"),
+            category,
+        );
+        match res {
+            Ok(_) => TweakActionResult {
+                success: true,
+                message: if enable {
+                    "MMCSS Tasks\\Games Scheduling Category set to High.".into()
+                } else {
+                    "MMCSS Tasks\\Games Scheduling Category restored to Medium.".into()
+                },
+            },
+            Err(_) => TweakActionResult {
+                success: false,
+                message: "Administrator privileges required to modify Tasks\\Games Scheduling Category.".into(),
+            },
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = enable;
+        TweakActionResult {
+            success: true,
+            message: "Mock MMCSS Gaming Priority toggle successful.".into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3d. Win32 Priority Separation (Quantum Length & Foreground Boost: 0x26)
+// ---------------------------------------------------------------------------
+
+pub fn is_win32_priority_separation_optimized() -> bool {
+    #[cfg(windows)]
+    {
+        read_registry_dword(
+            HKEY_LOCAL_MACHINE,
+            w!("SYSTEM\\CurrentControlSet\\Control\\PriorityControl"),
+            w!("Win32PrioritySeparation"),
+        ) == Some(0x26)
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+pub fn toggle_win32_priority_separation(optimize: bool) -> TweakActionResult {
+    #[cfg(windows)]
+    {
+        // 0x26 (38 dec): Short quanta, Variable lengths, 3:1 foreground boost ratio.
+        // 0x2 (2 dec): Default Windows client setting.
+        let val = if optimize { 0x26u32 } else { 0x2u32 };
+        let res = write_registry_dword(
+            HKEY_LOCAL_MACHINE,
+            w!("SYSTEM\\CurrentControlSet\\Control\\PriorityControl"),
+            w!("Win32PrioritySeparation"),
+            val,
+        );
+        match res {
+            Ok(_) => TweakActionResult {
+                success: true,
+                message: if optimize {
+                    "Win32PrioritySeparation set to 0x26 (Quantum boost active. Requires Windows restart).".into()
+                } else {
+                    "Win32PrioritySeparation restored to default 0x2. (Requires Windows restart).".into()
+                },
+            },
+            Err(_) => TweakActionResult {
+                success: false,
+                message: "Administrator privileges required to modify Win32PrioritySeparation.".into(),
+            },
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = optimize;
+        TweakActionResult {
+            success: true,
+            message: "Mock Win32PrioritySeparation toggle successful.".into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3e. Apply All Gaming Scheduler Tweaks
+// ---------------------------------------------------------------------------
+
+pub fn apply_all_scheduler_tweaks() -> Vec<TweakActionResult> {
+    vec![
+        toggle_mmcss_gaming_priority(true),
+        toggle_win32_priority_separation(true),
+        toggle_network_pacing(true),
+        toggle_system_responsiveness(true),
+    ]
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +554,7 @@ pub fn toggle_network_pacing(optimize: bool) -> TweakActionResult {
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-fn read_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<u32> {
+pub(crate) fn read_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<u32> {
     let mut hkey = HKEY::default();
     // SAFETY: RegOpenKeyExW safely opens registry key for read access
     let res = unsafe { RegOpenKeyExW(root, subkey, 0, KEY_READ, &mut hkey) };
@@ -409,7 +590,7 @@ fn read_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option
 }
 
 #[cfg(windows)]
-fn write_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: u32) -> Result<(), String> {
+pub(crate) fn write_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: u32) -> Result<(), String> {
     let mut hkey = HKEY::default();
     // SAFETY: RegCreateKeyExW opens or creates subkey with write permissions
     let res = unsafe {
@@ -456,7 +637,7 @@ fn write_registry_dword(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: u
 }
 
 #[cfg(windows)]
-fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<String> {
+pub(crate) fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<String> {
     let mut hkey = HKEY::default();
     // SAFETY: Opening registry subkey with read-only permissions
     let res = unsafe { RegOpenKeyExW(root, subkey, 0, KEY_READ, &mut hkey) };
@@ -495,7 +676,7 @@ fn read_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Option<St
 }
 
 #[cfg(windows)]
-fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str) -> Result<(), String> {
+pub(crate) fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str) -> Result<(), String> {
     let mut hkey = HKEY::default();
     // SAFETY: Opening or creating registry subkey with set-value permissions
     let res = unsafe {
@@ -543,7 +724,7 @@ fn write_registry_sz(root: HKEY, subkey: PCWSTR, value_name: PCWSTR, value: &str
 }
 
 #[cfg(windows)]
-fn delete_registry_value(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Result<(), String> {
+pub(crate) fn delete_registry_value(root: HKEY, subkey: PCWSTR, value_name: PCWSTR) -> Result<(), String> {
     let mut hkey = HKEY::default();
     // SAFETY: Opening registry subkey with set-value permissions
     let res = unsafe { RegOpenKeyExW(root, subkey, 0, KEY_SET_VALUE, &mut hkey) };

@@ -103,8 +103,12 @@
           <span class="nav-num">6</span>
           <span>Battery &amp; Eco</span>
         </button>
-        <button class="tabs-trigger" data-tab="tab-settings">
+        <button class="tabs-trigger" data-tab="tab-auditor">
           <span class="nav-num">7</span>
+          <span>Win11 Health</span>
+        </button>
+        <button class="tabs-trigger" data-tab="tab-settings">
+          <span class="nav-num">8</span>
           <span>Settings</span>
         </button>
       </div>
@@ -119,6 +123,7 @@
         <div class="metric-cell">
           <div class="cell-header">
             <span class="cell-label">PHYSICAL MEMORY</span>
+            <span class="badge badge-outline text-amber-400 font-mono text-[10px]" id="ram-pressure-badge" style="display: none;">High Pressure (&gt;88%)</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="cell-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
           </div>
           <div class="cell-metric-row">
@@ -177,7 +182,7 @@
             <span class="cell-value text-sm truncate" id="dash-active-game-text">Desktop Focus</span>
           </div>
           <div class="cell-footer-row">
-            <span>Throttled: <strong class="text-white font-mono" id="dash-throttled-count">0</strong></span>
+            <span>Throttled: <strong class="text-white font-mono" id="dash-throttled-count">0</strong> • Webviews: <strong class="text-white font-mono" id="dash-suspended-count">0</strong></span>
             <span class="font-mono text-xs" id="dash-pid-label">-</span>
           </div>
         </div>
@@ -304,8 +309,8 @@
 
               <div class="setting-row">
                 <div class="max-w-xl">
-                  <div class="font-medium text-white text-sm">Throttle Background Launchers &amp; Browsers (EcoQoS)</div>
-                  <div class="text-xs text-muted-foreground mt-0.5">Applies <code>ProcessPowerThrottling</code> (execution speed limits) to Discord, Chrome, Edge, and Steam during gameplay.</div>
+                  <div class="font-medium text-white text-sm">Throttle Background Store Helpers (EcoQoS)</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Applies <code>ProcessPowerThrottling</code> to background helpers (Spotify, idle store clients). Browsers, Discord, OBS, and Core Audio are strictly whitelisted.</div>
                 </div>
                 <label class="switch">
                   <input type="checkbox" id="chk-daemon-throttle" checked>
@@ -324,6 +329,112 @@
               </div>
             </div>
           </div>
+
+          <!-- Card 2: Per-Game Custom Profiles & Library Auto-Scanner -->
+          <div class="glass-card mt-4">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Per-Game Custom Profiles &amp; Library Auto-Scanner</h3>
+                <p class="card-description">Contextually switches hardware power plans, 100% core unparking, 1.0ms timer locks, display Hz, DSCP 46 QoS, and launcher webview suspension per game.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button class="btn btn-outline btn-xs" id="btn-import-profiles" title="Import Profiles JSON">Import</button>
+                <button class="btn btn-outline btn-xs" id="btn-export-profiles" title="Export Profiles JSON">Export</button>
+                <button class="btn btn-secondary btn-xs" id="btn-add-manual-game">+ Add Game (.exe)</button>
+                <button class="btn btn-primary btn-xs" id="btn-scan-games">Scan Libraries (Steam/Epic/Riot/Xbox)</button>
+              </div>
+            </div>
+            <div class="card-content space-y-4">
+              <!-- Inline Create / Edit Profile Workbench -->
+              <div id="profile-editor-panel" style="display: none;" class="p-4 rounded-xl bg-white/[0.03] border border-white/15 space-y-3">
+                <div class="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-white font-mono" id="profile-editor-title">Edit Game Profile</span>
+                  <button class="btn btn-ghost btn-xs text-muted-foreground" id="btn-cancel-profile-edit">Cancel</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                  <div class="space-y-1">
+                    <label class="text-muted-foreground font-mono text-[11px]">Display Name</label>
+                    <input type="text" id="edit-prof-name" class="input input-sm w-full" placeholder="e.g. Counter-Strike 2" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-muted-foreground font-mono text-[11px]">Executables (comma-separated .exe)</label>
+                    <div class="flex gap-1.5">
+                      <input type="text" id="edit-prof-exes" class="input input-sm w-full font-mono" placeholder="cs2.exe" />
+                      <button class="btn btn-outline btn-xs" id="btn-browse-prof-exe" type="button" title="Browse .exe">Browse</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3 text-xs">
+                  <div class="space-y-1">
+                    <label class="text-muted-foreground font-mono text-[11px]">Power Scheme</label>
+                    <select id="edit-prof-power" class="input input-sm w-full font-mono text-xs">
+                      <option value="high">High Performance</option>
+                      <option value="ultimate">Ultimate Performance</option>
+                      <option value="balanced">Balanced (Cool/Quiet)</option>
+                    </select>
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-muted-foreground font-mono text-[11px]">CPU Core Unparking</label>
+                    <select id="edit-prof-cores" class="input input-sm w-full font-mono text-xs">
+                      <option value="100">100% (All Cores Active)</option>
+                      <option value="50">50% (Windows Stock)</option>
+                    </select>
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-muted-foreground font-mono text-[11px]">Display Refresh Rate</label>
+                    <select id="edit-prof-hz" class="input input-sm w-full font-mono text-xs">
+                      <option value="">Keep Current</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 pt-1 text-xs">
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="edit-prof-timer" checked class="checkbox" />
+                    <span class="text-white">Lock 1.0ms Timer</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="edit-prof-boost" checked class="checkbox" />
+                    <span class="text-white">High Priority Boost</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="edit-prof-suspend" checked class="checkbox" />
+                    <span class="text-white">Suspend Webviews</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="edit-prof-qos" checked class="checkbox" />
+                    <span class="text-white">DSCP 46 QoS Tag</span>
+                  </label>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="edit-prof-sweep" checked class="checkbox" />
+                    <span class="text-white">Post-Game RAM Sweep</span>
+                  </label>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-white/10">
+                  <button class="btn btn-primary btn-xs" id="btn-save-profile-edit">Save Profile</button>
+                </div>
+              </div>
+
+              <!-- Discovered Games Shelf -->
+              <div id="discovered-shelf" style="display: none;" class="p-3 bg-white/[0.02] border border-white/5 rounded-lg space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-white" id="discovered-shelf-count">Discovered Games</span>
+                  <button class="btn btn-ghost btn-xs text-muted-foreground" id="btn-close-discovered">Dismiss</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1" id="discovered-games-grid">
+                  <!-- Populated via JS -->
+                </div>
+              </div>
+
+              <!-- Active Profiles List -->
+              <div class="space-y-2" id="profiles-container">
+                <div class="text-xs text-muted-foreground font-mono" id="profiles-empty-state">No custom game profiles created yet. Click "Scan Libraries" to detect installed titles.</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         
@@ -336,7 +447,10 @@
                 <h3 class="card-title">Safe Windows Debloat &amp; Network Pacing</h3>
                 <p class="card-description">Zero destructive modifications. Never alters Windows Update, Store, Defender, or Audio. Every tweak includes an instant Revert option.</p>
               </div>
-              <button class="btn btn-outline btn-xs" id="btn-revert-all-tweaks">Restore Defaults</button>
+              <div class="flex items-center gap-2">
+                <button class="btn btn-primary btn-xs" id="btn-apply-all-scheduler">Apply All Scheduler Tweaks</button>
+                <button class="btn btn-outline btn-xs" id="btn-revert-all-tweaks">Restore Defaults</button>
+              </div>
             </div>
             <div class="card-content divide-y">
               <!-- Tweak 1 -->
@@ -376,11 +490,57 @@
                     <span class="font-medium text-white text-sm tweak-name">Multimedia &amp; Network Gaming Pacing</span>
                     <span class="badge badge-outline">Safe</span>
                   </div>
-                  <div class="text-xs text-muted-foreground mt-0.5">Sets NetworkThrottlingIndex to 0xffffffff (disabled network throttling) and SystemResponsiveness to 0 in Multimedia\SystemProfile.</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Sets NetworkThrottlingIndex to 0xffffffff (disabled network throttling) and SystemResponsiveness to 10% in Multimedia\SystemProfile.</div>
                 </div>
                 <div class="flex items-center gap-2">
                   <button class="btn btn-secondary btn-sm" id="btn-toggle-network">Optimize Pacing</button>
                   <button class="btn btn-ghost btn-sm" id="btn-revert-network">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 3b: Win32 Priority Separation -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Win32 Priority Separation (Quantum 0x26)</span>
+                    <span class="badge badge-outline">Safe</span>
+                    <span class="badge badge-secondary" id="badge-restart-req" style="display:none; color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);">Requires Windows Restart</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Allocates longer CPU execution time slices (quanta) and 3:1 priority bias to foreground games over background threads in PriorityControl.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-win32-prio">Optimize (0x26)</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-win32-prio">Revert (0x2)</button>
+                </div>
+              </div>
+
+              <!-- Tweak 3c: MMCSS Tasks\Games Scheduling Category -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">MMCSS Games Scheduling Category</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Forces Multimedia Class Scheduler (MMCSS) to classify game threads as High execution category instead of default Medium.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-mmcss-prio">Set High</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-mmcss-prio">Revert (Medium)</button>
+                </div>
+              </div>
+
+              <!-- Tweak 3d: System Responsiveness Reserve -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">System Responsiveness Reserve (10%)</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Sets SystemResponsiveness to 10% (allocating 90% CPU priority to games), preventing modern Windows 10/11 from resetting to default 20%.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-sys-resp">Set 10%</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-sys-resp">Revert (20%)</button>
                 </div>
               </div>
 
@@ -427,6 +587,93 @@
                   <button class="btn btn-secondary btn-sm" id="btn-toggle-autostart">Enable Autostart</button>
                 </div>
               </div>
+
+              <!-- Tweak 7: Esports Low-Latency TCP & Nagle Algorithm -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Esports TCP Low-Latency (Disable Nagle)</span>
+                    <span class="badge badge-outline">Safe</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Configures TcpAckFrequency=1 and TCPNoDelay=1 across active network adapters, eliminating the 200ms delayed-ACK packet buffering latency.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-tcp-latency">Optimize TCP</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-tcp-latency">Revert</button>
+                </div>
+              </div>
+
+              <!-- Tweak 8: Core Audio Engine (audiodg.exe) Pinning & Priority -->
+              <div class="setting-row tweak-item">
+                <div class="max-w-xl">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-white text-sm tweak-name">Core Audio Engine Stabilization (audiodg.exe)</span>
+                    <span class="badge badge-outline">Safe</span>
+                    <span class="badge badge-secondary font-mono text-[10px]" id="badge-audio-core" style="display: none;">Core 2 • High</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">Pins Windows Audio Device Graph Isolation (audiodg.exe) to a dedicated non-Core-0 physical core at High priority and auto-reapplies on headset reconnects to eliminate mic crackle and audio pops.</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-audio-tuning">Optimize Audio</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-revert-audio-tuning">Revert</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Network Ping & Jitter Diagnostic Card -->
+          <div class="glass-card mt-4">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Esports Network Jitter &amp; Ping Diagnostic</h3>
+                <p class="card-description">Dispatches 8 native ICMP echo probes via Windows IcmpSendEcho to benchmark gateway latency, packet jitter, and packet loss.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <select id="sel-ping-target" class="input input-sm font-mono text-xs" style="width: auto; padding: 2px 8px;">
+                  <option value="1.1.1.1">Cloudflare (1.1.1.1)</option>
+                  <option value="8.8.8.8">Google (8.8.8.8)</option>
+                </select>
+                <button class="btn btn-primary btn-sm btn-cta" id="btn-run-ping-test">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  <span>Test Ping &amp; Jitter</span>
+                </button>
+              </div>
+            </div>
+            <div class="card-content space-y-4">
+              <!-- Live / Results Grid -->
+              <div class="grid grid-cols-4 gap-3 text-xs">
+                <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                  <div class="text-muted-foreground text-[11px] font-mono">AVG PING</div>
+                  <div class="text-base font-bold text-white font-mono" id="ping-metric-avg">-- ms</div>
+                  <div class="text-[10px] text-muted-foreground" id="ping-metric-minmax">Min: -- / Max: --</div>
+                </div>
+                <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                  <div class="text-muted-foreground text-[11px] font-mono">PACKET JITTER</div>
+                  <div class="text-base font-bold text-white font-mono" id="ping-metric-jitter">±-- ms</div>
+                  <div class="text-[10px] text-muted-foreground">Target: &lt;2.5 ms</div>
+                </div>
+                <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                  <div class="text-muted-foreground text-[11px] font-mono">PACKET LOSS</div>
+                  <div class="text-base font-bold text-white font-mono" id="ping-metric-loss">0.0%</div>
+                  <div class="text-[10px] text-muted-foreground">Target: 0.0%</div>
+                </div>
+                <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                  <div class="text-muted-foreground text-[11px] font-mono">QOS STATUS</div>
+                  <div class="text-base font-bold text-emerald-400 font-mono" id="ping-metric-qos">DSCP 46 Ready</div>
+                  <div class="text-[10px] text-muted-foreground" id="ping-metric-policies">0 Policies Active</div>
+                </div>
+              </div>
+
+              <!-- Verdict and recommendations banner -->
+              <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] flex items-center justify-between text-xs">
+                <div class="space-y-0.5">
+                  <div class="font-medium text-white flex items-center gap-2">
+                    <span id="ping-verdict-title">Network Ready for Testing</span>
+                  </div>
+                  <div class="text-muted-foreground text-[11px]" id="ping-verdict-desc">Click 'Test Ping & Jitter' to evaluate connection stability and router buffer health.</div>
+                </div>
+                <span class="badge badge-outline text-[11px] font-mono" id="ping-status-badge">Standby</span>
+              </div>
             </div>
           </div>
         </div>
@@ -453,6 +700,16 @@
                   <span>Purge Working Sets</span>
                   <kbd class="kbd">Alt+T</kbd>
                 </button>
+                <div class="setting-row pt-2 border-t border-white/10">
+                  <div class="max-w-sm">
+                    <div class="font-medium text-white text-xs">Auto-Trim Background RAM at 88%</div>
+                    <div class="text-[11px] text-muted-foreground mt-0.5">Prevents emergency pagefile stutter spikes (60s cooldown; strictly skips active game, browsers, Discord &amp; OS).</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-auto-trim-ram">
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -600,7 +857,184 @@
 
         
 
-        <!-- TAB 7: SETTINGS & CUSTOMIZATION -->
+        <!-- TAB 7: WIN11 GAMING AUDITOR -->
+        <div id="tab-auditor" class="tabs-content">
+          <!-- Hero Score Card -->
+          <div class="glass-card">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Windows 11 Gaming Feature Readiness</h3>
+                <p class="card-description">Audits MPO hardware composition, GPU kernel scheduling (HAGS), Windowed DXGI Flip presentation, and kernel virtualization overhead.</p>
+              </div>
+              <button class="btn btn-primary btn-xs" id="btn-reaudit-system">Re-Audit System</button>
+            </div>
+            <div class="card-content space-y-4">
+              <div class="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <div class="space-y-1">
+                  <div class="text-xs text-muted-foreground uppercase font-mono tracking-wider">Overall Gaming Readiness</div>
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-4xl font-extrabold text-white font-mono tracking-tight" id="auditor-score-text">--%</span>
+                    <span class="badge badge-secondary font-mono" id="auditor-grade-badge">Auditing</span>
+                  </div>
+                  <div class="text-xs text-muted-foreground" id="auditor-summary-text">Evaluating system subsystems...</div>
+                </div>
+                <div class="w-48 space-y-1.5">
+                  <div class="flex justify-between text-[11px] font-mono text-muted-foreground">
+                    <span>Target: 100%</span>
+                    <span id="auditor-score-percent">0%</span>
+                  </div>
+                  <div class="progress">
+                    <div class="progress-indicator" id="auditor-progress" style="width: 0%;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tier 1: Actionable (Yellow) -->
+              <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-amber-400 font-mono">Actionable Optimizations</span>
+                  <span class="badge badge-secondary text-[10px]" id="auditor-actionable-count">0</span>
+                </div>
+                <div class="space-y-2" id="auditor-actionable-list">
+                  <!-- Populated via JS -->
+                </div>
+              </div>
+
+              <!-- Tier 2: Optimized (Green) -->
+              <div class="space-y-2 pt-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400 font-mono">Active Optimized Subsystems</span>
+                  <span class="badge badge-secondary text-[10px]" id="auditor-optimized-count">0</span>
+                </div>
+                <div class="space-y-2" id="auditor-optimized-list">
+                  <!-- Populated via JS -->
+                </div>
+              </div>
+
+              <!-- Tier 3: Advisory & Hardware Context (Blue) -->
+              <div class="space-y-2 pt-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-sky-400 font-mono">Advisory &amp; Security Context</span>
+                  <span class="badge badge-secondary text-[10px]" id="auditor-advisory-count">0</span>
+                </div>
+                <div class="space-y-2" id="auditor-advisory-list">
+                  <!-- Populated via JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: On-Demand Latency & Stutter Benchmarker -->
+          <div class="glass-card mt-4">
+            <div class="card-header flex-row items-center justify-between">
+              <div>
+                <h3 class="card-title">Real-Time Latency &amp; Micro-Stutter Benchmarker</h3>
+                <p class="card-description">Runs a 15-second real-time telemetry test sampling DPC driver execution spikes, QPC timer jitter, and CoreAudio buffer stability.</p>
+              </div>
+              <button class="btn btn-primary btn-sm btn-cta" id="btn-run-latency-test">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Run 15s Latency Test</span>
+              </button>
+            </div>
+            <div class="card-content space-y-4">
+              <!-- Idle State Explanation (Shown when no test has run) -->
+              <div id="latency-idle-state" class="p-4 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between">
+                <div class="space-y-1">
+                  <div class="font-medium text-white text-sm">100% User-Mode Stutter Analysis</div>
+                  <div class="text-xs text-muted-foreground">Evaluates whether your GPU, Wi-Fi, or audio drivers are causing invisible frame micro-stutters during 240Hz+ esports gameplay.</div>
+                </div>
+                <span class="badge badge-outline font-mono text-[11px] text-emerald-400">Zero Kernel Drivers</span>
+              </div>
+
+              <!-- Running State (Live Progress & Real-Time Stats) -->
+              <div id="latency-running-state" class="p-4 rounded-xl bg-white/[0.03] border border-amber-500/20 space-y-3" style="display: none;">
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <div class="text-xs font-semibold text-amber-400 font-mono flex items-center gap-2">
+                      <span class="status-dot status-dot-running"></span>
+                      <span>Benchmarking System Responsiveness...</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground" id="latency-countdown-text">Sampling driver DPC queues (15s remaining)</div>
+                  </div>
+                  <button class="btn btn-outline btn-xs" id="btn-cancel-latency-test">Cancel Test</button>
+                </div>
+                <div class="progress">
+                  <div class="progress-indicator bg-amber-400" id="latency-progress-bar" style="width: 0%;"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 pt-1 text-xs font-mono">
+                  <div class="p-2 rounded bg-black/30 border border-white/5 flex justify-between">
+                    <span class="text-muted-foreground">Current Peak DPC:</span>
+                    <strong class="text-white" id="latency-live-dpc">0 µs</strong>
+                  </div>
+                  <div class="p-2 rounded bg-black/30 border border-white/5 flex justify-between">
+                    <span class="text-muted-foreground">Timer Jitter:</span>
+                    <strong class="text-white" id="latency-live-jitter">0 µs</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Verdict Result Card (Shown after test finishes) -->
+              <div id="latency-result-card" class="space-y-4" style="display: none;">
+                <div class="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div class="space-y-1">
+                    <div class="text-xs text-muted-foreground uppercase font-mono tracking-wider">Responsiveness Verdict</div>
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-4xl font-extrabold text-white font-mono tracking-tight" id="latency-grade-badge">A+</span>
+                      <span class="badge badge-success font-mono" id="latency-score-badge">Score: 98 / 100</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground" id="latency-verdict-desc">Flawless 240Hz+ esports frame pacing consistency.</div>
+                  </div>
+                  <div class="text-right space-y-1">
+                    <div class="text-xs font-mono text-muted-foreground">Status &amp; Audio Health</div>
+                    <div class="flex items-center justify-end gap-1.5">
+                      <span class="badge badge-outline text-[11px] font-mono text-sky-400" id="latency-audio-glitches-badge">0 Audio Glitches</span>
+                      <span class="badge badge-outline text-[11px] font-mono text-emerald-400" id="latency-status-badge">Esports Ready</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4 Bento Metric Pills -->
+                <div class="grid grid-cols-4 gap-3 text-xs">
+                  <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                    <div class="text-muted-foreground text-[11px] font-mono">PEAK DPC SPIKE</div>
+                    <div class="text-base font-bold text-white font-mono" id="latency-metric-peak-dpc">-- µs</div>
+                    <div class="text-[10px] text-muted-foreground">Target: &lt;500 µs</div>
+                  </div>
+                  <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                    <div class="text-muted-foreground text-[11px] font-mono">AVG DPC LOAD</div>
+                    <div class="text-base font-bold text-white font-mono" id="latency-metric-avg-dpc">--%</div>
+                    <div class="text-[10px] text-muted-foreground">Target: &lt;1.5%</div>
+                  </div>
+                  <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                    <div class="text-muted-foreground text-[11px] font-mono">TIMER JITTER</div>
+                    <div class="text-base font-bold text-white font-mono" id="latency-metric-jitter">-- µs</div>
+                    <div class="text-[10px] text-muted-foreground">Target: &lt;30 µs</div>
+                  </div>
+                  <div class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-1">
+                    <div class="text-muted-foreground text-[11px] font-mono">TIMER CADENCE</div>
+                    <div class="text-base font-bold text-white font-mono" id="latency-metric-timer-res">-- ms</div>
+                    <div class="text-[10px] text-muted-foreground" id="latency-metric-timer-min">Min: 0.50 ms</div>
+                  </div>
+                </div>
+
+                <!-- Recommendations & Driver Insights -->
+                <div id="latency-recommendations-box" class="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-2">
+                  <div class="text-xs font-semibold text-white font-mono flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    <span>Diagnostics &amp; Recommendations</span>
+                  </div>
+                  <ul class="text-xs text-muted-foreground space-y-1 list-disc pl-4" id="latency-recommendations-list">
+                    <!-- Populated dynamically via JS -->
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <!-- TAB 8: SETTINGS & CUSTOMIZATION -->
         <div id="tab-settings" class="tabs-content">
           
           <!-- Card 1: Appearance & Window Theme -->

@@ -190,7 +190,67 @@ pub fn set_core_unparking(unpark: bool) -> Result<u32, String> {
     }
 }
 
-/// Switches active Windows Power Scheme (e.g. High Performance or Balanced).
+/// Windows 10/11 Modern Standby (S0ix) Power Mode Overlay GUIDs
+#[cfg(windows)]
+pub const GUID_OVERLAY_BEST_PERFORMANCE: GUID = GUID {
+    data1: 0xded574b5,
+    data2: 0x45a0,
+    data3: 0x4f42,
+    data4: [0x87, 0x37, 0x46, 0x34, 0x5c, 0x09, 0xc2, 0x38],
+};
+
+#[cfg(windows)]
+pub const GUID_OVERLAY_BALANCED: GUID = GUID {
+    data1: 0x00000000,
+    data2: 0x0000,
+    data3: 0x0000,
+    data4: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+};
+
+#[cfg(windows)]
+pub const GUID_OVERLAY_BEST_EFFICIENCY: GUID = GUID {
+    data1: 0x961cc777,
+    data2: 0x2547,
+    data3: 0x4f9d,
+    data4: [0x81, 0x74, 0x7d, 0x86, 0x18, 0x1b, 0x8a, 0x7a],
+};
+
+/// Dynamically invokes `PowerSetActiveOverlayScheme` from `powrprof.dll` for Modern Standby (S0ix)
+/// laptops where OEM firmware hides traditional High/Ultimate Performance power plans.
+#[cfg(windows)]
+fn apply_s0ix_power_overlay(scheme_type: &str) -> Result<String, String> {
+    use windows::core::{s, w};
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+
+    type PowerSetActiveOverlaySchemeFn = unsafe extern "system" fn(*const GUID) -> u32;
+
+    let overlay_guid = match scheme_type.to_lowercase().as_str() {
+        "high" | "high_performance" | "ultimate" => GUID_OVERLAY_BEST_PERFORMANCE,
+        "balanced" => GUID_OVERLAY_BALANCED,
+        "eco" | "power_saver" => GUID_OVERLAY_BEST_EFFICIENCY,
+        _ => return Err("Unsupported overlay mode.".into()),
+    };
+
+    unsafe {
+        let hmod = GetModuleHandleW(w!("powrprof.dll"))
+            .map_err(|e| format!("powrprof.dll unavailable: {:?}", e))?;
+        let proc = GetProcAddress(hmod, s!("PowerSetActiveOverlayScheme"))
+            .ok_or_else(|| "PowerSetActiveOverlayScheme export not available".to_string())?;
+        let func: PowerSetActiveOverlaySchemeFn = std::mem::transmute(proc);
+        let status = func(&overlay_guid);
+        if status == 0 {
+            Ok(format!(
+                "Activated Modern Standby (S0ix) {} Power Mode Overlay.",
+                scheme_type
+            ))
+        } else {
+            Err(format!("PowerSetActiveOverlayScheme failed with code {}", status))
+        }
+    }
+}
+
+/// Switches active Windows Power Scheme (e.g. High Performance or Balanced),
+/// with automatic Modern Standby (S0ix) Power Mode Overlay fallback for laptops.
 pub fn set_power_scheme(scheme_type: &str) -> Result<String, String> {
     #[cfg(windows)]
     {
@@ -204,12 +264,18 @@ pub fn set_power_scheme(scheme_type: &str) -> Result<String, String> {
         // SAFETY: Setting active scheme by known Windows GUID
         let apply_status = unsafe { PowerSetActiveScheme(None, Some(&target_guid)) };
         if apply_status.is_err() {
+            // Modern Standby (S0ix) laptops frequently hide High/Ultimate GUIDs; fall back to Power Mode Overlay
+            if let Ok(overlay_msg) = apply_s0ix_power_overlay(scheme_type) {
+                return Ok(overlay_msg);
+            }
             return Err(format!(
                 "Could not activate requested power plan: {:?}",
                 apply_status
             ));
         }
 
+        // Also align the S0ix overlay when switching back to Balanced or High
+        let _ = apply_s0ix_power_overlay(scheme_type);
         Ok(format!("Successfully activated {} scheme.", scheme_type))
     }
 

@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 #[cfg(windows)]
 use windows::Win32::Foundation::CloseHandle;
@@ -11,12 +13,89 @@ use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA,
 };
 
+pub const RAM_HIGH_PRESSURE_THRESHOLD: u32 = 88;
+pub const RAM_AUTO_TRIM_COOLDOWN_SECS: u64 = 60;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryGuardConfig {
+    pub auto_trim_at_high_pressure: bool,
+    pub threshold_percent: u32,
+}
+
+impl Default for MemoryGuardConfig {
+    fn default() -> Self {
+        Self {
+            auto_trim_at_high_pressure: false,
+            threshold_percent: RAM_HIGH_PRESSURE_THRESHOLD,
+        }
+    }
+}
+
+pub type SharedMemoryGuardConfig = Arc<RwLock<MemoryGuardConfig>>;
+
+fn memory_guard_path() -> PathBuf {
+    let base = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.join("FerrumPulse").join("memory_guard.json")
+}
+
+pub fn load_memory_guard_config_from(path: &PathBuf) -> MemoryGuardConfig {
+    if !path.exists() {
+        return MemoryGuardConfig::default();
+    }
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_memory_guard_config_to(
+    path: &PathBuf,
+    cfg: &MemoryGuardConfig,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::to_string_pretty(cfg)
+        .map_err(|e| format!("Failed to serialize memory guard config: {}", e))?;
+    std::fs::write(path, json).map_err(|e| format!("Failed to write memory guard config: {}", e))
+}
+
+pub fn load_memory_guard_config() -> MemoryGuardConfig {
+    load_memory_guard_config_from(&memory_guard_path())
+}
+
+pub fn save_memory_guard_config(cfg: &MemoryGuardConfig) -> Result<(), String> {
+    save_memory_guard_config_to(&memory_guard_path(), cfg)
+}
+
+/// Pure policy check deciding whether background RAM auto-trim should trigger.
+pub fn should_auto_trim_ram(
+    memory_load_percent: u32,
+    cfg: &MemoryGuardConfig,
+    secs_since_last_trim: Option<u64>,
+) -> bool {
+    if !cfg.auto_trim_at_high_pressure {
+        return false;
+    }
+    let threshold = cfg.threshold_percent.clamp(70, 98);
+    if memory_load_percent < threshold {
+        return false;
+    }
+    match secs_since_last_trim {
+        Some(elapsed) => elapsed >= RAM_AUTO_TRIM_COOLDOWN_SECS,
+        None => true,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryStats {
     pub total_ram_mb: u64,
     pub available_ram_mb: u64,
     pub used_ram_mb: u64,
     pub memory_load_percent: u32,
+    pub high_pressure_warning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +131,7 @@ pub fn get_memory_stats() -> Result<MemoryStats, String> {
             available_ram_mb: avail_mb,
             used_ram_mb: used_mb,
             memory_load_percent: status.dwMemoryLoad,
+            high_pressure_warning: status.dwMemoryLoad >= RAM_HIGH_PRESSURE_THRESHOLD,
         })
     }
 
@@ -62,12 +142,15 @@ pub fn get_memory_stats() -> Result<MemoryStats, String> {
             available_ram_mb: 20480,
             used_ram_mb: 12288,
             memory_load_percent: 38,
+            high_pressure_warning: false,
         })
     }
 }
 
-/// Windows system processes that must NEVER have their working sets flushed to prevent OS instability.
+/// Windows system processes and web browsers that must NEVER have their working sets flushed
+/// to prevent OS instability and browser tab freezing / hard page faults.
 pub const PROTECTED_SYSTEM_PROCESSES: &[&str] = &[
+    // Core Windows & Audio
     "csrss.exe",
     "lsass.exe",
     "smss.exe",
@@ -76,6 +159,14 @@ pub const PROTECTED_SYSTEM_PROCESSES: &[&str] = &[
     "services.exe",
     "explorer.exe",
     "systemsettings.exe",
+    // Web Browsers (Flushing causes 2-5s tab freezes and massive pagefile churn)
+    "chrome.exe",
+    "msedge.exe",
+    "brave.exe",
+    "firefox.exe",
+    "opera.exe",
+    "vivaldi.exe",
+    "arc.exe",
 ];
 
 /// Iterates running processes and purges inactive working sets via K32EmptyWorkingSet.

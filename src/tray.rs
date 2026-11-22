@@ -50,6 +50,9 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "quit" => {
+                if let Some(pm) = app.try_state::<std::sync::Arc<crate::process::ProcessPacingManager>>() {
+                    pm.stop_and_cleanup();
+                }
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.destroy();
                 }

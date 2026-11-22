@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 #[cfg(windows)]
 use windows::core::GUID;
@@ -71,12 +73,34 @@ pub struct BatteryTelemetry {
     pub current_refresh_rate: u32,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatteryConfig {
+    #[serde(default = "default_true")]
     pub auto_switch: bool,
+    #[serde(default = "default_true")]
     pub refresh_rate_saver: bool,
+    #[serde(default = "default_true")]
+    pub dc_core_parking_enabled: bool,
+    #[serde(default = "default_true")]
+    pub turbo_limit_enabled: bool,
+    #[serde(default)]
+    pub saved_ac_refresh_rate: Option<u32>,
+    #[serde(default = "default_turbo_max")]
     pub throttle_max_cpu_percent: u32,
+    #[serde(default = "default_dc_parking")]
     pub dc_core_parking_percent: u32,
+}
+
+fn default_turbo_max() -> u32 {
+    99
+}
+
+fn default_dc_parking() -> u32 {
+    10
 }
 
 impl Default for BatteryConfig {
@@ -84,14 +108,53 @@ impl Default for BatteryConfig {
         Self {
             auto_switch: true,
             refresh_rate_saver: true,
+            dc_core_parking_enabled: true,
+            turbo_limit_enabled: true,
+            saved_ac_refresh_rate: None,
             throttle_max_cpu_percent: 99,
             dc_core_parking_percent: 10,
         }
     }
 }
 
-/// Queries live battery status using GetSystemPowerStatus
-pub fn get_battery_telemetry() -> BatteryTelemetry {
+pub type SharedBatteryConfig = Arc<RwLock<BatteryConfig>>;
+
+fn battery_config_path() -> PathBuf {
+    let base = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.join("FerrumPulse").join("battery_config.json")
+}
+
+pub fn load_battery_config_from(path: &PathBuf) -> BatteryConfig {
+    if !path.exists() {
+        return BatteryConfig::default();
+    }
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_battery_config_to(path: &PathBuf, cfg: &BatteryConfig) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::to_string_pretty(cfg)
+        .map_err(|e| format!("Failed to serialize battery config: {}", e))?;
+    std::fs::write(path, json).map_err(|e| format!("Failed to write battery config: {}", e))
+}
+
+pub fn load_battery_config() -> BatteryConfig {
+    load_battery_config_from(&battery_config_path())
+}
+
+pub fn save_battery_config(cfg: &BatteryConfig) -> Result<(), String> {
+    save_battery_config_to(&battery_config_path(), cfg)
+}
+
+/// Queries live battery status using GetSystemPowerStatus with persisted config values.
+pub fn get_battery_telemetry_with_config(cfg: &BatteryConfig) -> BatteryTelemetry {
     #[cfg(windows)]
     {
         let mut sps = SYSTEM_POWER_STATUS::default();
@@ -106,8 +169,8 @@ pub fn get_battery_telemetry() -> BatteryTelemetry {
                 battery_percent: 100,
                 remaining_time_minutes: None,
                 eco_mode_active: false,
-                auto_switch_enabled: true,
-                refresh_rate_saver_enabled: true,
+                auto_switch_enabled: cfg.auto_switch,
+                refresh_rate_saver_enabled: cfg.refresh_rate_saver,
                 current_refresh_rate: get_current_display_refresh_rate().unwrap_or(60),
             };
         }
@@ -134,8 +197,8 @@ pub fn get_battery_telemetry() -> BatteryTelemetry {
             battery_percent,
             remaining_time_minutes,
             eco_mode_active: !ac_connected,
-            auto_switch_enabled: true,
-            refresh_rate_saver_enabled: true,
+            auto_switch_enabled: cfg.auto_switch,
+            refresh_rate_saver_enabled: cfg.refresh_rate_saver,
             current_refresh_rate: get_current_display_refresh_rate().unwrap_or(60),
         }
     }
@@ -148,14 +211,19 @@ pub fn get_battery_telemetry() -> BatteryTelemetry {
         battery_percent: 85,
         remaining_time_minutes: Some(210),
         eco_mode_active: true,
-        auto_switch_enabled: true,
-        refresh_rate_saver_enabled: true,
+        auto_switch_enabled: cfg.auto_switch,
+        refresh_rate_saver_enabled: cfg.refresh_rate_saver,
         current_refresh_rate: 60,
     }
 }
 
-/// Applies the Comprehensive Battery Eco Profile (Power Saver, 10% DC Core Parking, 99% Max CPU)
-pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
+/// Queries live battery status using GetSystemPowerStatus
+pub fn get_battery_telemetry() -> BatteryTelemetry {
+    get_battery_telemetry_with_config(&load_battery_config())
+}
+
+/// Applies the Comprehensive Battery Eco Profile respecting persisted user policy toggles.
+pub fn apply_battery_eco_profile_with_config(enable: bool, cfg: &BatteryConfig) -> Result<(), String> {
     #[cfg(windows)]
     {
         let target_scheme = if enable {
@@ -169,40 +237,49 @@ pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
         unsafe {
             let res = PowerSetActiveScheme(None, Some(&target_scheme));
             if res != windows::Win32::Foundation::WIN32_ERROR(0) {
-                // If Power Saver does not exist on some OEM images, try Balanced
                 let _ = PowerSetActiveScheme(None, Some(&GUID_BALANCED));
             }
         }
+        // Align S0ix Power Mode Overlay as well on Modern Standby laptops
+        let _ = crate::power::set_power_scheme(if enable { "balanced" } else { "balanced" });
 
-        // 2. DC Min Cores Index (10% on battery allowing unused cores to deep-sleep, 50% default on restore)
-        let min_cores: u32 = if enable { 10 } else { 50 };
-        // SAFETY: Writing DC processor subgroup core parking index to valid target scheme.
-        unsafe {
-            let _ = PowerWriteDCValueIndex(
-                None,
-                &target_scheme,
-                Some(&GUID_PROCESSOR_SETTINGS_SUBGROUP),
-                Some(&GUID_CPMINCORES),
-                min_cores,
-            );
+        // 2. DC Min Cores Index (honors dc_core_parking_enabled)
+        if cfg.dc_core_parking_enabled || !enable {
+            let min_cores: u32 = if enable { cfg.dc_core_parking_percent } else { 50 };
+            unsafe {
+                let _ = PowerWriteDCValueIndex(
+                    None,
+                    &target_scheme,
+                    Some(&GUID_PROCESSOR_SETTINGS_SUBGROUP),
+                    Some(&GUID_CPMINCORES),
+                    min_cores,
+                );
+            }
         }
 
-        // 3. Max Processor State (99% prevents aggressive Intel/AMD Turbo boost voltage spikes on DC)
-        let max_cpu: u32 = if enable { 99 } else { 100 };
-        // SAFETY: Writing DC maximum processor throttle state index to valid target scheme.
-        unsafe {
-            let _ = PowerWriteDCValueIndex(
-                None,
-                &target_scheme,
-                Some(&GUID_PROCESSOR_SETTINGS_SUBGROUP),
-                Some(&GUID_PROCTHROTTLEMAX),
-                max_cpu,
-            );
+        // 3. Max Processor State (honors turbo_limit_enabled)
+        if cfg.turbo_limit_enabled || !enable {
+            let max_cpu: u32 = if enable { cfg.throttle_max_cpu_percent } else { 100 };
+            unsafe {
+                let _ = PowerWriteDCValueIndex(
+                    None,
+                    &target_scheme,
+                    Some(&GUID_PROCESSOR_SETTINGS_SUBGROUP),
+                    Some(&GUID_PROCTHROTTLEMAX),
+                    max_cpu,
+                );
+            }
         }
 
-        // 4. Optionally step down display refresh rate to 60Hz when on battery
-        if enable {
-            let _ = set_display_refresh_rate(60);
+        // 4. Display refresh rate stepdown / restore (honors refresh_rate_saver)
+        if cfg.refresh_rate_saver {
+            if enable {
+                let _ = set_display_refresh_rate(60);
+            } else if let Some(saved_hz) = cfg.saved_ac_refresh_rate {
+                if saved_hz > 60 {
+                    let _ = set_display_refresh_rate(saved_hz);
+                }
+            }
         }
 
         Ok(())
@@ -210,9 +287,77 @@ pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
 
     #[cfg(not(windows))]
     {
-        let _ = enable;
+        let _ = (enable, cfg);
         Ok(())
     }
+}
+
+/// Applies the Comprehensive Battery Eco Profile (Power Saver, 10% DC Core Parking, 99% Max CPU)
+pub fn apply_battery_eco_profile(enable: bool) -> Result<(), String> {
+    let cfg = load_battery_config();
+    apply_battery_eco_profile_with_config(enable, &cfg)
+}
+
+/// Deduplicates, filters (>= 30Hz), and sorts display refresh rates descending.
+pub fn normalize_supported_refresh_rates(rates: Vec<u32>) -> Vec<u32> {
+    let mut unique: Vec<u32> = rates.into_iter().filter(|&hz| hz >= 30).collect();
+    unique.sort_unstable_by(|a, b| b.cmp(a));
+    unique.dedup();
+    unique
+}
+
+/// Enumerates all supported display refresh rates at the primary monitor's active resolution.
+pub fn get_supported_refresh_rates() -> Vec<u32> {
+    #[cfg(windows)]
+    {
+        let mut current = DEVMODEW {
+            dmSize: std::mem::size_of::<DEVMODEW>() as u16,
+            ..Default::default()
+        };
+        let cur_ok = unsafe { EnumDisplaySettingsW(None, ENUM_CURRENT_SETTINGS, &mut current) };
+        if !cur_ok.as_bool() {
+            return vec![60];
+        }
+
+        let target_w = current.dmPelsWidth;
+        let target_h = current.dmPelsHeight;
+        let target_bpp = current.dmBitsPerPel;
+
+        let mut rates = Vec::new();
+        let mut mode_idx = 0u32;
+        loop {
+            let mut mode = DEVMODEW {
+                dmSize: std::mem::size_of::<DEVMODEW>() as u16,
+                ..Default::default()
+            };
+            let ok = unsafe {
+                EnumDisplaySettingsW(
+                    None,
+                    windows::Win32::Graphics::Gdi::ENUM_DISPLAY_SETTINGS_MODE(mode_idx),
+                    &mut mode,
+                )
+            };
+            if !ok.as_bool() {
+                break;
+            }
+            if mode.dmPelsWidth == target_w
+                && mode.dmPelsHeight == target_h
+                && (target_bpp == 0 || mode.dmBitsPerPel == target_bpp)
+            {
+                rates.push(mode.dmDisplayFrequency);
+            }
+            mode_idx += 1;
+        }
+
+        let normalized = normalize_supported_refresh_rates(rates);
+        if normalized.is_empty() {
+            vec![current.dmDisplayFrequency.max(60)]
+        } else {
+            normalized
+        }
+    }
+    #[cfg(not(windows))]
+    vec![240, 144, 120, 60]
 }
 
 /// Gets the current primary display refresh rate
